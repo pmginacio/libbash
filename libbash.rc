@@ -1,0 +1,6 @@
+# transpose input table
+alias trp='python3 -c 'import pandas as pd; import sys; a = pd.read_table(sys.stdin); print(a.transpose())'
+
+# generate random string
+rstr() { tr -dc '[:alnum:]' </dev/urandom | head -c ${1:-16}; echo ;}
+
