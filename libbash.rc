@@ -1,6 +1,8 @@
-# transpose input table
-alias trp='python3 -c 'import pandas as pd; import sys; a = pd.read_table(sys.stdin); print(a.transpose())'
+# transpose a table
+alias trp='python3 -c "import pandas as pd; import sys; a = pd.read_table(sys.stdin, index_col=False, header=None); a.transpose().to_csv(sys.stdout, sep=\"\t\", index=False, header=False)"'
+
+# grep a specific column in a table
+cgrep() { awk '{if ($'$1' ~ "'$2'") {print $0}}' "$3"; }
 
 # generate random string
 rstr() { tr -dc '[:alnum:]' </dev/urandom | head -c ${1:-16}; echo ;}
-
