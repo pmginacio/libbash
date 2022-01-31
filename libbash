@@ -1,3 +1,24 @@
+# get a timestamp
+ts() { date +"%H:%M:%S"; }
+
+# logging facilities
+debug() { 
+    local _SELF
+    [[ ! -z $SELF ]] && _SELF="$SELF:"
+    ${DEBUG:-false} && echo -e "[$(ts)]: DEBUG: $_SELF$@";
+}
+warning() { 
+    local _SELF
+    [[ ! -z $SELF ]] && _SELF="$SELF:"
+    echo -e "[$(ts)]: WARNING: $_SELF$@";
+}
+error() { 
+    local _SELF
+    [[ ! -z $SELF ]] && _SELF="$SELF:"
+    echo -e "[$(ts)]: ERROR: $_SELF$@";
+    exit 3
+}
+
 # transpose a table
 alias trp='python3 -c "import pandas as pd; import sys; a = pd.read_table(sys.stdin, index_col=False, header=None); a.transpose().to_csv(sys.stdout, sep=\"\t\", index=False, header=False)"'
 
@@ -6,3 +27,30 @@ cgrep() { awk '{if ($'$1' ~ "'$2'") {print $0}}' "$3"; }
 
 # generate random string
 rstr() { tr -dc '[:alnum:]' </dev/urandom | head -c ${1:-16}; echo ;}
+
+# benchmark a command, store elapsed time in ms in _LAST_DT variable 
+# and return the return code of the input command
+timeit() {
+    start=$(date +%s%N)
+    $@
+    RC=$?
+    end=$(date +%s%N)
+    _LAST_DT=$(( ($end -$start) / 1000000 ))
+    return $RC
+}
+
+# encapsulate messages around an input command
+encap() {
+    local RC TITLE _LAST_DT
+    TITLE="$1"
+    shift
+    echo -en "[    ] $TITLE ... "
+    $@
+    RC=$?
+    if [[ $RC == 0 ]]; then
+        echo -e "\r[ OK ] $TITLE ... "
+    else
+        echo -e "\r[FAIL] $TITLE ... "
+    fi
+    return $RC
+}
