@@ -1,22 +1,69 @@
 # get a timestamp
 ts() { date +"%H:%M:%S"; }
 
+# print stack
+stack() {
+    local _FRAME=0
+    while caller $_FRAME; do
+        _FRAME=$((_FRAME+1));
+    done
+}
+
+# return the path of the top-level script
+self() { stack | tail -n 1 | cut -d ' ' -f 3; }
+
+# return text in color
+ctxt() { 
+    local _COLOR=$1
+    local _TYPE=$2
+    shift 2
+    if [[ $# == 0 ]]; then
+        local _LINE
+        while read _LINE; do 
+            ctxt $_COLOR $_TYPE $_LINE
+        done
+    else
+        echo -e "\e[${_COLOR};${_TYPE}m$@\e[0m"
+    fi
+}
+
+# common aliases
+bredtxt() { ctxt 31 1 $@; }
+byeltxt() { ctxt 1 33 $@; }
+bcyatxt() { ctxt 1 36 $@; }
+bgrntxt() { ctxt 32 1 $@; }
+
 # logging facilities
+# these functions read variable SELF from the environment if it exists
 debug() { 
-    local _SELF
-    [[ ! -z $SELF ]] && _SELF="$SELF:"
-    ${DEBUG:-false} && echo -e "[$(ts)]: DEBUG: $_SELF$@";
+    local _SELF="$(basename "$(self)"):"
+    local _TAG="$(bcyatxt [$(ts)]:DEBUG:$_SELF)"
+    ${DEBUG:-false} && echo -e "$_TAG$@" || true;
 }
 warning() { 
-    local _SELF
-    [[ ! -z $SELF ]] && _SELF="$SELF:"
-    echo -e "[$(ts)]: WARNING: $_SELF$@";
+    local _SELF="$(basename "$(self)"):"
+    local _TAG="$(byeltxt [$(ts)]:WARNING:$_SELF)"
+    echo -e "$_TAG$@";
 }
 error() { 
-    local _SELF
-    [[ ! -z $SELF ]] && _SELF="$SELF:"
-    echo -e "[$(ts)]: ERROR: $_SELF$@";
+    local _SELF="$(basename "$(self)"):"
+    local _TAG="$(bredtxt [$(ts)]:ERROR:$_SELF)"
+    echo -e "$_TAG$@";
+    echo "Stack:"
+    stack | while read LINE; do
+        echo -e "\t$LINE"
+    done
     exit 3
+}
+info() {
+    local _SELF="$(basename "$(self)"):"
+    local _TAG="[$(ts)]:INFO:$_SELF"
+    local _FLAGS="-e"
+    if [[ ${1:-} == '-n' ]]; then
+        _FLAGS="$_FLAGS -n"
+        shift
+    fi
+    echo $_FLAGS "$_TAG$@";
 }
 
 # transpose a table
@@ -30,27 +77,51 @@ rstr() { tr -dc '[:alnum:]' </dev/urandom | head -c ${1:-16}; echo ;}
 
 # benchmark a command, store elapsed time in ms in _LAST_DT variable 
 # and return the return code of the input command
-timeit() {
-    start=$(date +%s%N)
+elapsed() {
+    local START STOP
+    START=$(date +%s%N)
     $@
     RC=$?
-    end=$(date +%s%N)
-    _LAST_DT=$(( ($end -$start) / 1000000 ))
+    STOP=$(date +%s%N)
+    _LAST_DT=$(python3 -c "print('%.3f' % (($STOP -$START)/1E9))")
     return $RC
 }
 
-# encapsulate messages around an input command
+# encapsulate messages around an input command and return
+# the corresponding return code
+# the first argument is a title for the message
+# TODO: add optional arguments for log
+# TODO: read from stdin if no more arguments?
 encap() {
-    local RC TITLE _LAST_DT
-    TITLE="$1"
-    shift
-    echo -en "[    ] $TITLE ... "
-    $@
-    RC=$?
-    if [[ $RC == 0 ]]; then
-        echo -e "\r[ OK ] $TITLE ... "
-    else
-        echo -e "\r[FAIL] $TITLE ... "
+    local _LAST_DT=0  # used by elapsed()
+    local LOG="$(mktemp)"
+    local PRTFUN=info
+    
+    # optionals pre-title
+    local PRE=""
+    if [[ ${1:-} == '-p' ]]; then
+        local PRE="$1"
+        shift
     fi
-    return $RC
+    
+    # mandatory arguments
+    local TITLE="$1"
+    shift
+    
+    # 
+    $PRTFUN -n "$PRE[    ][       ]$TITLE ..."
+    if elapsed $@ &>"$LOG"; then 
+        # success
+        echo -en "\r"
+        $PRTFUN "$PRE[ $(bgrntxt OK) ][$_LAST_DT s]$TITLE ..."
+        rm -f "$LOG"
+        return 0
+    else
+        # fail
+        echo -en "\r"
+        $PRTFUN "$PRE[$(bredtxt FAIL)][$_LAST_DT s]$TITLE ..."
+        echo "Last 10 lines of log $LOG:"
+        tail "$LOG"
+        return 1
+    fi
 }
